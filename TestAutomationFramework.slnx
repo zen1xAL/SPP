@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="CalculatorApp.Tests/CalculatorApp.Tests.csproj" />
+  <Project Path="CalculatorApp/CalculatorApp.csproj" />
+  <Project Path="MyTestFramework.Runner/MyTestFramework.Runner.csproj" />
+  <Project Path="MyTestFramework/MyTestFramework.csproj" />
+</Solution>
