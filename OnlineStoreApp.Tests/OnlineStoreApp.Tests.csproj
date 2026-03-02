@@ -2,7 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MyTestFramework\MyTestFramework.csproj" />
-    <ProjectReference Include="..\CalculatorApp\CalculatorApp.csproj" />
+    <ProjectReference Include="..\OnlineStoreApp\OnlineStoreApp.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MyTestFramework\MyTestFramework.csproj" />
+    <ProjectReference Include="..\OnlineStoreApp.Tests\OnlineStoreApp.Tests.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

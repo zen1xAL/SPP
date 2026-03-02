@@ -7,7 +7,6 @@ namespace MyTestFramework
 {
     public static class Assert
     {
-        // 1. IsTrue
         public static void IsTrue(bool condition, string message = "Expected true but was false.")
         {
             if (!condition)
@@ -16,7 +15,6 @@ namespace MyTestFramework
             }
         }
 
-        // 2. IsFalse
         public static void IsFalse(bool condition, string message = "Expected false but was true.")
         {
             if (condition)
@@ -25,7 +23,6 @@ namespace MyTestFramework
             }
         }
 
-        // 3. AreEqual
         public static void AreEqual(object expected, object actual, string message = null)
         {
             if (!Equals(expected, actual))
@@ -35,7 +32,6 @@ namespace MyTestFramework
             }
         }
 
-        // 4. AreNotEqual
         public static void AreNotEqual(object notExpected, object actual, string message = null)
         {
             if (Equals(notExpected, actual))
@@ -45,7 +41,6 @@ namespace MyTestFramework
             }
         }
 
-        // 5. IsNull
         public static void IsNull(object obj, string message = "Expected null but was not null.")
         {
             if (obj != null)
@@ -54,7 +49,6 @@ namespace MyTestFramework
             }
         }
 
-        // 6. IsNotNull
         public static void IsNotNull(object obj, string message = "Expected not null but was null.")
         {
             if (obj == null)
@@ -63,7 +57,6 @@ namespace MyTestFramework
             }
         }
 
-        // 7. Throws
         public static T Throws<T>(Action action, string message = null) where T : Exception
         {
             try
@@ -72,7 +65,7 @@ namespace MyTestFramework
             }
             catch (T ex)
             {
-                return ex; // Success
+                return ex;
             }
             catch (Exception ex)
             {
@@ -82,7 +75,6 @@ namespace MyTestFramework
             throw new AssertFailedException(message ?? $"Expected exception of type {typeof(T).Name}, but no exception was thrown.");
         }
 
-        // 8. ThrowsAsync
         public static async Task<T> ThrowsAsync<T>(Func<Task> action, string message = null) where T : Exception
         {
             try
@@ -101,7 +93,6 @@ namespace MyTestFramework
             throw new AssertFailedException(message ?? $"Expected exception of type {typeof(T).Name}, but no exception was thrown.");
         }
 
-        // 9. Contains
         public static void Contains(object expected, IEnumerable collection, string message = null)
         {
             foreach (var item in collection)
@@ -114,7 +105,6 @@ namespace MyTestFramework
             throw new AssertFailedException(message ?? $"Expected collection to contain <{expected}>.");
         }
 
-        // 10. DoesNotContain
         public static void DoesNotContain(object notExpected, IEnumerable collection, string message = null)
         {
             foreach (var item in collection)

@@ -128,7 +128,6 @@ namespace MyTestFramework.Runner
             bool passed = false;
             bool failed = false;
 
-            // Inject shared context
             if (sharedContextInstance != null)
             {
                 var method = testClass.GetMethod("SetContext");
@@ -144,13 +143,11 @@ namespace MyTestFramework.Runner
 
                 if (testMethod.ReturnType == typeof(Task) || (testMethod.ReturnType.IsGenericType && testMethod.ReturnType.GetGenericTypeDefinition() == typeof(Task<>)))
                 {
-                    // Async test method
                     var task = (Task)testMethod.Invoke(classInstance, parameters);
                     await task.ConfigureAwait(false);
                 }
                 else
                 {
-                    // Sync test method
                     testMethod.Invoke(classInstance, parameters);
                 }
 
