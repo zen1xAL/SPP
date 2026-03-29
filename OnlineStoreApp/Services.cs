@@ -11,15 +11,8 @@ namespace OnlineStoreApp.Services
     {
         private readonly List<Product> _catalog = new List<Product>();
 
-        public void AddProduct(Product product)
-        {
-            _catalog.Add(product);
-        }
-
-        public Product GetProduct(int id)
-        {
-            return _catalog.FirstOrDefault(p => p.Id == id);
-        }
+        public void AddProduct(Product product) => _catalog.Add(product);
+        public Product GetProduct(int id) => _catalog.FirstOrDefault(p => p.Id == id);
 
         public void ReserveProduct(int productId, int quantity)
         {
@@ -39,14 +32,9 @@ namespace OnlineStoreApp.Services
     {
         public async Task<bool> ProcessPaymentAsync(decimal amount, string cardNumber)
         {
-            await Task.Delay(100);
-
-            if (amount <= 0)
-                throw new ArgumentException("Amount must be greater than zero.");
-
-            if (string.IsNullOrEmpty(cardNumber) || cardNumber.Length < 16)
-                throw new PaymentFailedException("Invalid card number.");
-
+            await Task.Delay(300); 
+            if (amount <= 0) throw new ArgumentException("Amount must be greater than zero.");
+            if (string.IsNullOrEmpty(cardNumber) || cardNumber.Length < 16) throw new PaymentFailedException("Invalid card number.");
             return cardNumber.StartsWith("4");
         }
     }
@@ -64,10 +52,7 @@ namespace OnlineStoreApp.Services
 
         public async Task<Order> CheckoutAsync(List<Product> cartItems, string cardNumber)
         {
-            if (cartItems == null || cartItems.Count == 0)
-            {
-                return null;
-            }
+            if (cartItems == null || cartItems.Count == 0) return null;
 
             var order = new Order
             {
@@ -82,10 +67,7 @@ namespace OnlineStoreApp.Services
             }
 
             bool paymentResult = await _payment.ProcessPaymentAsync(order.TotalAmount, cardNumber);
-            if (!paymentResult)
-            {
-                throw new PaymentFailedException("Payment was declined by the bank.");
-            }
+            if (!paymentResult) throw new PaymentFailedException("Payment was declined by the bank.");
 
             order.IsPaid = true;
             return order;

@@ -9,26 +9,19 @@ namespace MyTestFramework
     {
         public static void IsTrue(bool condition, string message = "Expected true but was false.")
         {
-            if (!condition)
-            {
-                throw new AssertFailedException(message);
-            }
+            if (!condition) throw new AssertFailedException(message);
         }
 
         public static void IsFalse(bool condition, string message = "Expected false but was true.")
         {
-            if (condition)
-            {
-                throw new AssertFailedException(message);
-            }
+            if (condition) throw new AssertFailedException(message);
         }
 
         public static void AreEqual(object expected, object actual, string message = null)
         {
             if (!Equals(expected, actual))
             {
-                string msg = message ?? $"Expected <{expected}> but was <{actual}>.";
-                throw new AssertFailedException(msg);
+                throw new AssertFailedException(message ?? $"Expected <{expected}> but was <{actual}>.");
             }
         }
 
@@ -36,25 +29,18 @@ namespace MyTestFramework
         {
             if (Equals(notExpected, actual))
             {
-                string msg = message ?? $"Expected any value except <{notExpected}>, but was <{actual}>.";
-                throw new AssertFailedException(msg);
+                throw new AssertFailedException(message ?? $"Expected any value except <{notExpected}>, but was <{actual}>.");
             }
         }
 
         public static void IsNull(object obj, string message = "Expected null but was not null.")
         {
-            if (obj != null)
-            {
-                throw new AssertFailedException(message);
-            }
+            if (obj != null) throw new AssertFailedException(message);
         }
 
         public static void IsNotNull(object obj, string message = "Expected not null but was null.")
         {
-            if (obj == null)
-            {
-                throw new AssertFailedException(message);
-            }
+            if (obj == null) throw new AssertFailedException(message);
         }
 
         public static T Throws<T>(Action action, string message = null) where T : Exception
@@ -71,7 +57,6 @@ namespace MyTestFramework
             {
                 throw new AssertFailedException(message ?? $"Expected exception of type {typeof(T).Name}, but {ex.GetType().Name} was thrown.");
             }
-            
             throw new AssertFailedException(message ?? $"Expected exception of type {typeof(T).Name}, but no exception was thrown.");
         }
 
@@ -89,7 +74,6 @@ namespace MyTestFramework
             {
                 throw new AssertFailedException(message ?? $"Expected exception of type {typeof(T).Name}, but {ex.GetType().Name} was thrown.");
             }
-            
             throw new AssertFailedException(message ?? $"Expected exception of type {typeof(T).Name}, but no exception was thrown.");
         }
 
@@ -97,10 +81,7 @@ namespace MyTestFramework
         {
             foreach (var item in collection)
             {
-                if (Equals(expected, item))
-                {
-                    return;
-                }
+                if (Equals(expected, item)) return;
             }
             throw new AssertFailedException(message ?? $"Expected collection to contain <{expected}>.");
         }

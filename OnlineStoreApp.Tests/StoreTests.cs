@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MyTestFramework;
@@ -12,7 +13,7 @@ namespace OnlineStoreApp.Tests
 {
     public class SharedDbFixture : IDisposable
     {
-        public List<string> TestLogs { get; } = new List<string>();
+        public ConcurrentBag<string> TestLogs { get; } = new ConcurrentBag<string>();
 
         public SharedDbFixture()
         {
@@ -27,7 +28,6 @@ namespace OnlineStoreApp.Tests
         public void Dispose()
         {
             TestLogs.Clear();
-            Console.WriteLine("Shared DB Disposed.");
         }
     }
 
@@ -64,16 +64,11 @@ namespace OnlineStoreApp.Tests
             _inventory = null;
             _paymentProcessor = null;
             _orderService = null;
-        }
-
-        [TestMethod("Successfully checkout a valid order")]
+        }[TestMethod("Successfully checkout a valid order")]
         public async Task CheckoutAsync_ValidOrder_Success()
         {
-            var cart = new List<Product>
-            {
-                _inventory.GetProduct(1),
-                _inventory.GetProduct(2)
-            };
+            await Task.Delay(200); 
+            var cart = new List<Product> { _inventory.GetProduct(1), _inventory.GetProduct(2) };
 
             var order = await _orderService.CheckoutAsync(cart, "4111222233334444");
 
@@ -94,15 +89,11 @@ namespace OnlineStoreApp.Tests
             
             var order2 = await _orderService.CheckoutAsync(null, "4111222233334444");
             Assert.IsNull(order2);
-        }
-
-        [TestMethod("Declined payment should throw PaymentFailedException")]
+        }[TestMethod("Declined payment should throw PaymentFailedException")]
         public async Task CheckoutAsync_DeclinedCard_ThrowsException()
         {
             var cart = new List<Product> { _inventory.GetProduct(1) };
-            
             Func<Task> act = async () => await _orderService.CheckoutAsync(cart, "5111222233334444");
-
             await Assert.ThrowsAsync<PaymentFailedException>(act);
         }
 
@@ -110,7 +101,6 @@ namespace OnlineStoreApp.Tests
         public void Checkout_OutOfStock_ThrowsException()
         {
             var product = _inventory.GetProduct(3);
-            
             Assert.Throws<OutOfStockException>(() => _inventory.ReserveProduct(product.Id, 1));
         }
 
@@ -130,8 +120,7 @@ namespace OnlineStoreApp.Tests
             Assert.IsFalse(!containsSetup);
         }
 
-        [TestMethod]
-        [TestCase("111122223333")]
+        [TestMethod][TestCase("111122223333")]
         [TestCase("")]
         public async Task ProcessPayment_InvalidCard_ThrowsPaymentFailed(string cardStr)
         {
@@ -139,10 +128,17 @@ namespace OnlineStoreApp.Tests
             await Assert.ThrowsAsync<PaymentFailedException>(act);
         }
 
+        [TestMethod("Timeout test example")]
+        [Timeout(100)]
+        public async Task TimeoutTest_Fails()
+        {
+            await Task.Delay(500); 
+        }
+
         [TestMethod(Ignore = true)]
         public void IncompleteFeature_IgnoredTest()
         {
-            Assert.IsTrue(false, "Should not be executed");
+            Assert.IsTrue(false);
         }
     }
 }

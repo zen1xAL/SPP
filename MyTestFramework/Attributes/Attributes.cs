@@ -3,9 +3,7 @@ using System;
 namespace MyTestFramework.Attributes
 {
     [AttributeUsage(AttributeTargets.Class, Inherited = false)]
-    public class TestClassAttribute : Attribute
-    {
-    }
+    public class TestClassAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Method, Inherited = false)]
     public class TestMethodAttribute : Attribute
@@ -18,9 +16,7 @@ namespace MyTestFramework.Attributes
         {
             Description = description;
         }
-    }
-
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = false)]
+    }[AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = false)]
     public class TestCaseAttribute : Attribute
     {
         public object[] Parameters { get; }
@@ -29,15 +25,16 @@ namespace MyTestFramework.Attributes
         {
             Parameters = parameters;
         }
-    }
-
-    [AttributeUsage(AttributeTargets.Method, Inherited = false)]
-    public class SetupAttribute : Attribute
+    }[AttributeUsage(AttributeTargets.Method, Inherited = false)]
+    public class SetupAttribute : Attribute { }[AttributeUsage(AttributeTargets.Method, Inherited = false)]
+    public class TeardownAttribute : Attribute { }[AttributeUsage(AttributeTargets.Method, Inherited = false)]
+    public class TimeoutAttribute : Attribute
     {
-    }
+        public int Milliseconds { get; }
 
-    [AttributeUsage(AttributeTargets.Method, Inherited = false)]
-    public class TeardownAttribute : Attribute
-    {
+        public TimeoutAttribute(int milliseconds)
+        {
+            Milliseconds = milliseconds;
+        }
     }
 }
