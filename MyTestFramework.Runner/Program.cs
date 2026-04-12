@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MyTestFramework.Attributes;
 using MyTestFramework.Exceptions;
+using MyThreadPool; 
 
 namespace MyTestFramework.Runner
 {
@@ -15,111 +16,117 @@ namespace MyTestFramework.Runner
     {
         private static int _totalPassed = 0;
         private static int _totalFailed = 0;
-        private static int _totalIgnored = 0;
         private static readonly object ConsoleLock = new object();
 
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             if (args.Length == 0) return;
-
             string dllPath = Path.GetFullPath(args[0]);
             if (!File.Exists(dllPath)) return;
 
-            int maxParallel = Environment.ProcessorCount;
-            var maxParallelArg = args.FirstOrDefault(a => a.StartsWith("--parallel="));
-            if (maxParallelArg != null) int.TryParse(maxParallelArg.Substring(11), out maxParallel);
-            if (args.Contains("--seq")) maxParallel = 1;
-
             Assembly assembly = Assembly.LoadFrom(dllPath);
-
             var testClasses = assembly.GetTypes()
                 .Where(t => t.GetCustomAttribute<TestClassAttribute>() != null && !t.IsAbstract)
                 .ToList();
 
-            using var semaphore = new SemaphoreSlim(maxParallel);
-            var sw = Stopwatch.StartNew();
+            var allTestActions = new List<Action>();
 
-            var classTasks = testClasses.Select(async testClass =>
+            foreach (var testClass in testClasses)
             {
                 object sharedContextInstance = null;
-                var sharedContextInterface = testClass.GetInterfaces()
-                    .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name == "ISharedContext`1");
+                var contextInterface = testClass.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name == "ISharedContext`1");
+                if (contextInterface != null) sharedContextInstance = Activator.CreateInstance(contextInterface.GetGenericArguments()[0]);
 
-                if (sharedContextInterface != null)
-                {
-                    var contextType = sharedContextInterface.GetGenericArguments()[0];
-                    sharedContextInstance = Activator.CreateInstance(contextType);
-                }
-
-                var methods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                var methods = testClass.GetMethods();
                 var setupMethod = methods.FirstOrDefault(m => m.GetCustomAttribute<SetupAttribute>() != null);
                 var teardownMethod = methods.FirstOrDefault(m => m.GetCustomAttribute<TeardownAttribute>() != null);
                 var testMethods = methods.Where(m => m.GetCustomAttribute<TestMethodAttribute>() != null).ToList();
 
-                var methodTasks = new List<Task>();
-
                 foreach (var testMethod in testMethods)
                 {
                     var testAttr = testMethod.GetCustomAttribute<TestMethodAttribute>();
-                    string baseName = !string.IsNullOrEmpty(testAttr.Description) ? testAttr.Description : testMethod.Name;
+                    if (testAttr.Ignore) continue;
 
-                    if (testAttr.Ignore)
-                    {
-                        lock (ConsoleLock)
-                        {
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"  [IGNORED] [{testClass.Name}] {baseName}");
-                            Console.ResetColor();
-                            Interlocked.Increment(ref _totalIgnored);
-                        }
-                        continue;
-                    }
-
+                    string baseName = testAttr.Description ?? testMethod.Name;
                     var testCases = testMethod.GetCustomAttributes<TestCaseAttribute>().ToList();
+
                     if (testCases.Any())
                     {
                         foreach (var testCase in testCases)
                         {
                             string caseName = $"[{testClass.Name}] {baseName}({string.Join(", ", testCase.Parameters)})";
-                            methodTasks.Add(RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, testCase.Parameters, caseName, semaphore));
+                           
+                            allTestActions.Add(() => RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, testCase.Parameters, caseName).GetAwaiter().GetResult());
                         }
                     }
                     else
                     {
                         string caseName = $"[{testClass.Name}] {baseName}";
-                        methodTasks.Add(RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, null, caseName, semaphore));
+                        allTestActions.Add(() => RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, null, caseName).GetAwaiter().GetResult());
                     }
                 }
+            }
 
-                await Task.WhenAll(methodTasks);
+            var loadPlan = new List<Action>();
+            for (int i = 0; i < 7; i++) loadPlan.AddRange(allTestActions);
 
-                if (sharedContextInstance is IDisposable disposableContext)
+            Console.WriteLine($"\nВсего подготовлено тестов для симуляции: {loadPlan.Count}");
+
+            using var pool = new CustomThreadPool(minThreads: 2, maxThreads: 10, idleTimeoutMs: 2000);
+            
+            using var countdown = new CountdownEvent(loadPlan.Count);
+
+            var monitorThread = new Thread(() =>
+            {
+                while (countdown.CurrentCount > 0)
                 {
-                    disposableContext.Dispose();
+                    Console.ForegroundColor = ConsoleColor.DarkYellow;
+                    Console.WriteLine($"[МОНИТОРИНГ] В очереди: {pool.QueueLength} | Активных потоков: {pool.ActiveThreads} (Свободно: {pool.IdleThreads}) | Осталось тестов: {countdown.CurrentCount}");
+                    Console.ResetColor();
+                    Thread.Sleep(800);
                 }
-            });
+            }) { IsBackground = true };
+            monitorThread.Start();
 
-            await Task.WhenAll(classTasks);
+            var sw = Stopwatch.StartNew();
+
+            Console.WriteLine("\n--- ФАЗА 1: Слабая нагрузка (5 тестов) ---");
+            for (int i = 0; i < 5; i++)
+            {
+                var task = loadPlan[i];
+                pool.Enqueue(() => { task(); countdown.Signal(); });
+                Thread.Sleep(300); 
+            }
+
+            Console.WriteLine("\n--- ФАЗА 2: Пиковая нагрузка (35 тестов мгновенно) ---");
+            for (int i = 5; i < 40; i++)
+            {
+                var task = loadPlan[i];
+                pool.Enqueue(() => { task(); countdown.Signal(); });
+            }
+
+            Console.WriteLine("\n--- ФАЗА 3: Имитация простоя (Ждем 4 секунды) ---");
+            Thread.Sleep(4000); 
+
+            Console.WriteLine("\n--- ФАЗА 4: Новая волна нагрузки (16 тестов) ---");
+            for (int i = 40; i < loadPlan.Count; i++)
+            {
+                var task = loadPlan[i];
+                pool.Enqueue(() => { task(); countdown.Signal(); });
+            }
+
+            // Ждем завершения всех тестов
+            countdown.Wait();
             sw.Stop();
 
             Console.WriteLine("\n==============================");
-            Console.WriteLine($"Time elapsed: {sw.ElapsedMilliseconds} ms (MaxParallel: {maxParallel})");
-            Console.WriteLine($"Total tests:  {_totalPassed + _totalFailed + _totalIgnored}");
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"Passed:       {_totalPassed}");
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Failed:       {_totalFailed}");
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Ignored:      {_totalIgnored}");
-            Console.ResetColor();
+            Console.WriteLine($"Все тесты завершены за {sw.ElapsedMilliseconds} мс");
+            Console.WriteLine($"Успешно: {_totalPassed}, Провалено: {_totalFailed}");
             Console.WriteLine("==============================\n");
         }
 
-        private static async Task RunTestAsync(
-            Type testClass, MethodInfo testMethod, MethodInfo setupMethod, MethodInfo teardownMethod,
-            object sharedContextInstance, object[] parameters, string testName, SemaphoreSlim semaphore)
+        private static async Task RunTestAsync(Type testClass, MethodInfo testMethod, MethodInfo setupMethod, MethodInfo teardownMethod, object sharedContextInstance, object[] parameters, string testName)
         {
-            await semaphore.WaitAsync();
             bool passed = false;
             string errorMsg = null;
             object classInstance = Activator.CreateInstance(testClass);
@@ -128,8 +135,7 @@ namespace MyTestFramework.Runner
             {
                 if (sharedContextInstance != null)
                 {
-                    var method = testClass.GetMethod("SetContext");
-                    method?.Invoke(classInstance, new[] { sharedContextInstance });
+                    testClass.GetMethod("SetContext")?.Invoke(classInstance, new[] { sharedContextInstance });
                 }
 
                 setupMethod?.Invoke(classInstance, null);
@@ -144,7 +150,8 @@ namespace MyTestFramework.Runner
                 }
                 else
                 {
-                    testTask = Task.Run(() => testMethod.Invoke(classInstance, parameters));
+                    // execute task
+                    testTask = Task.Run(() => testMethod.Invoke(classInstance, parameters)); 
                 }
 
                 if (timeoutMs != Timeout.Infinite)
@@ -155,7 +162,6 @@ namespace MyTestFramework.Runner
                         throw new TestTimeoutException($"Test exceeded timeout of {timeoutMs}ms");
                     }
                 }
-
                 await testTask;
                 passed = true;
             }
@@ -167,44 +173,28 @@ namespace MyTestFramework.Runner
                     actual = actual.InnerException ?? actual;
                     if (actual is AssertFailedException || actual is TestTimeoutException) break;
                 }
-
                 errorMsg = actual.Message;
-                if (!(actual is AssertFailedException || actual is TestTimeoutException))
-                {
-                    errorMsg = $"Unhandled exception: {actual.GetType().Name}: {actual.Message}";
-                }
             }
             finally
             {
-                try
-                {
-                    teardownMethod?.Invoke(classInstance, null);
-                }
-                catch (Exception tEx)
-                {
-                    errorMsg = (errorMsg == null ? "" : errorMsg + " | ") + "Teardown failed: " + (tEx.InnerException?.Message ?? tEx.Message);
-                    passed = false;
-                }
+                try { teardownMethod?.Invoke(classInstance, null); } catch { }
 
                 lock (ConsoleLock)
                 {
                     if (passed)
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"  [PASSED]  {testName}");
-                        Interlocked.Increment(ref _totalPassed);
+                        Console.WriteLine($"  [PASSED] {testName}");
+                        _totalPassed++;
                     }
                     else
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"  [FAILED]  {testName}");
-                        Console.WriteLine($"    -> {errorMsg}");
-                        Interlocked.Increment(ref _totalFailed);
+                        Console.WriteLine($"  [FAILED] {testName} -> {errorMsg}");
+                        _totalFailed++;
                     }
                     Console.ResetColor();
                 }
-
-                semaphore.Release();
             }
         }
     }

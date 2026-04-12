@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="MyTestFramework.Runner/MyTestFramework.Runner.csproj" />
   <Project Path="MyTestFramework/MyTestFramework.csproj" />
+  <Project Path="MyThreadPool/MyThreadPool.csproj" />
   <Project Path="OnlineStoreApp.Tests/OnlineStoreApp.Tests.csproj" />
   <Project Path="OnlineStoreApp/OnlineStoreApp.csproj" />
 </Solution>

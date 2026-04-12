@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MyTestFramework\MyTestFramework.csproj" />
     <ProjectReference Include="..\OnlineStoreApp.Tests\OnlineStoreApp.Tests.csproj" />
+    <ProjectReference Include="..\MyThreadPool\MyThreadPool.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
