@@ -6,6 +6,10 @@ namespace MyThreadPool
 {
     public class CustomThreadPool : IDisposable
     {
+        public event Action<string, int, int> OnThreadCreated;  
+        public event Action<string, int> OnThreadDestroyed;     
+        public event Action<string> OnError;                     
+
         private readonly int _minThreads;
         private readonly int _maxThreads;
         private readonly int _idleTimeoutMs;
@@ -18,13 +22,9 @@ namespace MyThreadPool
         private bool _isDisposed = false;
         private readonly object _lock = new object();
 
-        // metrics for monitoring
         public int ActiveThreads => _activeThreads;
         public int IdleThreads => _idleThreads;
-        public int QueueLength 
-        { 
-            get { lock (_lock) return _queue.Count; } 
-        }
+        public int QueueLength { get { lock (_lock) return _queue.Count; } }
 
         public CustomThreadPool(int minThreads, int maxThreads, int idleTimeoutMs)
         {
@@ -32,13 +32,9 @@ namespace MyThreadPool
             _maxThreads = maxThreads;
             _idleTimeoutMs = idleTimeoutMs;
 
-            // initialize the minimum number of threads
             lock (_lock)
             {
-                for (int i = 0; i < _minThreads; i++)
-                {
-                    StartNewThread_Unsafe();
-                }
+                for (int i = 0; i < _minThreads; i++) StartNewThread_Unsafe();
             }
         }
 
@@ -52,13 +48,10 @@ namespace MyThreadPool
 
                 _queue.Enqueue(task);
 
-                // dynamic scaling
                 if (_idleThreads == 0 && _activeThreads < _maxThreads)
                 {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"[POOL SCALE UP] Очередь растет. Создан новый поток. (Активных: {_activeThreads + 1}/{_maxThreads})");
-                    Console.ResetColor();
                     StartNewThread_Unsafe();
+                    OnThreadCreated?.Invoke("Очередь растет. Создан новый поток.", _activeThreads, _maxThreads);
                 }
 
                 Monitor.Pulse(_lock);
@@ -97,33 +90,22 @@ namespace MyThreadPool
                             _activeThreads--;
                             _workers.Remove(Thread.CurrentThread);
                             
-                            Console.ForegroundColor = ConsoleColor.DarkGray;
-                            Console.WriteLine($"[POOL SCALE DOWN] Поток {Thread.CurrentThread.Name} простаивал и был завершен. (Активных: {_activeThreads})");
-                            Console.ResetColor();
-                            
+                            OnThreadDestroyed?.Invoke($"Поток {Thread.CurrentThread.Name} простаивал и был завершен.", _activeThreads);
                             return;
                         }
                     }
 
                     _idleThreads--;
-
-                    if (_isDisposed && _queue.Count == 0)
-                        return;
-
+                    if (_isDisposed && _queue.Count == 0) return;
                     task = _queue.Dequeue();
                 }
 
                 if (task != null)
                 {
-                    try
-                    {
-                        task(); 
-                    }
+                    try { task(); }
                     catch (Exception ex)
                     {
-                        Console.ForegroundColor = ConsoleColor.Magenta;
-                        Console.WriteLine($"[POOL ERROR] Поток {Thread.CurrentThread.Name} перехватил сбой: {ex.Message}");
-                        Console.ResetColor();
+                        OnError?.Invoke($"Поток {Thread.CurrentThread.Name} перехватил сбой: {ex.Message}");
                     }
                 }
             }

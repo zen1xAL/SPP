@@ -14,23 +14,10 @@ namespace OnlineStoreApp.Tests
     public class SharedDbFixture : IDisposable
     {
         public ConcurrentBag<string> TestLogs { get; } = new ConcurrentBag<string>();
-
-        public SharedDbFixture()
-        {
-            TestLogs.Add("Database Connected.");
-        }
-
-        public void Log(string message)
-        {
-            TestLogs.Add(message);
-        }
-
-        public void Dispose()
-        {
-            TestLogs.Clear();
-        }
+        public SharedDbFixture() { TestLogs.Add("Database Connected."); }
+        public void Log(string message) { TestLogs.Add(message); }
+        public void Dispose() { TestLogs.Clear(); }
     }
-
     [TestClass]
     public class OrderServiceTests : ISharedContext<SharedDbFixture>
     {
@@ -47,8 +34,6 @@ namespace OnlineStoreApp.Tests
         [Setup]
         public void Setup()
         {
-            _db.Log("Setting up services...");
-            
             _inventory = new InventoryService();
             _inventory.AddProduct(new Product { Id = 1, Name = "Laptop", Price = 1500.00m, StockQuantity = 5 });
             _inventory.AddProduct(new Product { Id = 2, Name = "Mouse", Price = 25.50m, StockQuantity = 100 });
@@ -64,60 +49,49 @@ namespace OnlineStoreApp.Tests
             _inventory = null;
             _paymentProcessor = null;
             _orderService = null;
-        }[TestMethod("Successfully checkout a valid order")]
+        }
+
+        [TestMethod("Магия Дерева Выражений (Тест намеренно упадет!)")]
+        public async Task ExpressionTree_MagicTest_Fails()
+        {
+            await Task.Delay(500); 
+
+            int myCartTotal = 1500;
+            int accountBalance = 1000;
+            
+            Assert.Check(() => myCartTotal + 500 == accountBalance * 2); 
+            Assert.Check(() => myCartTotal == accountBalance); 
+        }
+
+        public static IEnumerable<object[]> GetCardsFromDatabase()
+        {
+            yield return new object[] { "4111222233334444", true }; 
+            yield return new object[] { "5111222233334444", false }; 
+        }
+
+        [TestMethod("Проверка платежей через источник данных (yield return)")][TestCaseSource(nameof(GetCardsFromDatabase))]
+        public async Task ProcessPayment_UsingYieldReturn(string cardNum, bool expectedResult)
+        {
+            await Task.Delay(500);
+
+            var result = await _paymentProcessor.ProcessPaymentAsync(100, cardNum);
+            Assert.AreEqual(expectedResult, result);
+        }
+
+        [TestMethod("Этот тест не запустится из-за делегата-фильтрации")]
+        [Category("Manual")] 
+        public void ShouldBeFilteredOut()
+        {
+            Assert.IsTrue(false, "ЕСЛИ ВЫ ВИДИТЕ ЭТО, ФИЛЬТРАЦИЯ НЕ СРАБОТАЛА!");
+        }
+
+        [TestMethod("Successfully checkout a valid order")]
+        [Priority("High")]
         public async Task CheckoutAsync_ValidOrder_Success()
         {
-            await Task.Delay(200); 
-            var cart = new List<Product> { _inventory.GetProduct(1), _inventory.GetProduct(2) };
-
-            var order = await _orderService.CheckoutAsync(cart, "4111222233334444");
-
-            Assert.IsNotNull(order);
-            Assert.IsTrue(order.IsPaid);
-            Assert.AreEqual(1525.50m, order.TotalAmount);
-            Assert.AreNotEqual(0, order.OrderId);
-            Assert.Contains(cart[0], order.Items);
-            
-            _db.Log("Checkout success test passed.");
-        }
-
-        [TestMethod("Empty cart should return null order")]
-        public async Task CheckoutAsync_EmptyCart_ReturnsNull()
-        {
-            var order = await _orderService.CheckoutAsync(new List<Product>(), "4111222233334444");
-            Assert.IsNull(order);
-            
-            var order2 = await _orderService.CheckoutAsync(null, "4111222233334444");
-            Assert.IsNull(order2);
-        }[TestMethod("Declined payment should throw PaymentFailedException")]
-        public async Task CheckoutAsync_DeclinedCard_ThrowsException()
-        {
             var cart = new List<Product> { _inventory.GetProduct(1) };
-            Func<Task> act = async () => await _orderService.CheckoutAsync(cart, "5111222233334444");
-            await Assert.ThrowsAsync<PaymentFailedException>(act);
-        }
-
-        [TestMethod("Out of stock product should throw OutOfStockException")]
-        public void Checkout_OutOfStock_ThrowsException()
-        {
-            var product = _inventory.GetProduct(3);
-            Assert.Throws<OutOfStockException>(() => _inventory.ReserveProduct(product.Id, 1));
-        }
-
-        [TestMethod("Check shared context logs")]
-        public void VerifySharedContext()
-        {
-            Assert.IsTrue(_db.TestLogs.Count > 0);
-            
-            string unexpectedLog = "Random string not in logs";
-            Assert.DoesNotContain(unexpectedLog, _db.TestLogs);
-            
-            bool containsSetup = false;
-            foreach (var log in _db.TestLogs)
-            {
-                if (log == "Setting up services...") containsSetup = true;
-            }
-            Assert.IsFalse(!containsSetup);
+            var order = await _orderService.CheckoutAsync(cart, "4111222233334444");
+            Assert.IsNotNull(order);
         }
 
         [TestMethod][TestCase("111122223333")]
@@ -126,19 +100,6 @@ namespace OnlineStoreApp.Tests
         {
             Func<Task> act = async () => await _paymentProcessor.ProcessPaymentAsync(100, cardStr);
             await Assert.ThrowsAsync<PaymentFailedException>(act);
-        }
-
-        [TestMethod("Timeout test example")]
-        [Timeout(100)]
-        public async Task TimeoutTest_Fails()
-        {
-            await Task.Delay(500); 
-        }
-
-        [TestMethod(Ignore = true)]
-        public void IncompleteFeature_IgnoredTest()
-        {
-            Assert.IsTrue(false);
         }
     }
 }

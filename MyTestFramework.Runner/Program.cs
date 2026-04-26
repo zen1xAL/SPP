@@ -31,6 +31,13 @@ namespace MyTestFramework.Runner
 
             var allTestActions = new List<Action>();
 
+            Func<MethodInfo, bool> testFilter = m => 
+            {
+                var catAttr = m.GetCustomAttribute<CategoryAttribute>();
+                if (catAttr != null && catAttr.Name == "Manual") return false;
+                return true;
+            };
+
             foreach (var testClass in testClasses)
             {
                 object sharedContextInstance = null;
@@ -40,7 +47,8 @@ namespace MyTestFramework.Runner
                 var methods = testClass.GetMethods();
                 var setupMethod = methods.FirstOrDefault(m => m.GetCustomAttribute<SetupAttribute>() != null);
                 var teardownMethod = methods.FirstOrDefault(m => m.GetCustomAttribute<TeardownAttribute>() != null);
-                var testMethods = methods.Where(m => m.GetCustomAttribute<TestMethodAttribute>() != null).ToList();
+                
+                var testMethods = methods.Where(m => m.GetCustomAttribute<TestMethodAttribute>() != null && testFilter(m)).ToList();
 
                 foreach (var testMethod in testMethods)
                 {
@@ -48,18 +56,32 @@ namespace MyTestFramework.Runner
                     if (testAttr.Ignore) continue;
 
                     string baseName = testAttr.Description ?? testMethod.Name;
+                    
+                    var testSourceAttr = testMethod.GetCustomAttribute<TestCaseSourceAttribute>();
                     var testCases = testMethod.GetCustomAttributes<TestCaseAttribute>().ToList();
 
-                    if (testCases.Any())
+                    if (testSourceAttr != null)
+                    {
+                        var sourceMethod = testClass.GetMethod(testSourceAttr.SourceMethodName, BindingFlags.Public | BindingFlags.Static);
+                        if (sourceMethod != null)
+                        {
+                            var parametersList = (IEnumerable<object[]>)sourceMethod.Invoke(null, null);
+                            foreach (var parameters in parametersList)
+                            {
+                                string caseName = $"[{testClass.Name}] {baseName}({string.Join(", ", parameters)})";
+                                allTestActions.Add(() => RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, parameters, caseName).GetAwaiter().GetResult());
+                            }
+                        }
+                    }
+                    else if (testCases.Any())
                     {
                         foreach (var testCase in testCases)
                         {
                             string caseName = $"[{testClass.Name}] {baseName}({string.Join(", ", testCase.Parameters)})";
-                           
                             allTestActions.Add(() => RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, testCase.Parameters, caseName).GetAwaiter().GetResult());
                         }
                     }
-                    else
+                    else 
                     {
                         string caseName = $"[{testClass.Name}] {baseName}";
                         allTestActions.Add(() => RunTestAsync(testClass, testMethod, setupMethod, teardownMethod, sharedContextInstance, null, caseName).GetAwaiter().GetResult());
@@ -67,55 +89,44 @@ namespace MyTestFramework.Runner
                 }
             }
 
-            var loadPlan = new List<Action>();
-            for (int i = 0; i < 7; i++) loadPlan.AddRange(allTestActions);
-
-            Console.WriteLine($"\nВсего подготовлено тестов для симуляции: {loadPlan.Count}");
+            Console.WriteLine($"\nВсего отфильтровано тестов к запуску: {allTestActions.Count}");
 
             using var pool = new CustomThreadPool(minThreads: 2, maxThreads: 10, idleTimeoutMs: 2000);
             
-            using var countdown = new CountdownEvent(loadPlan.Count);
-
-            var monitorThread = new Thread(() =>
-            {
-                while (countdown.CurrentCount > 0)
-                {
-                    Console.ForegroundColor = ConsoleColor.DarkYellow;
-                    Console.WriteLine($"[МОНИТОРИНГ] В очереди: {pool.QueueLength} | Активных потоков: {pool.ActiveThreads} (Свободно: {pool.IdleThreads}) | Осталось тестов: {countdown.CurrentCount}");
+            pool.OnThreadCreated += (msg, active, max) => {
+                lock(ConsoleLock) {
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"[Событие] {msg} (Активно: {active}/{max})");
                     Console.ResetColor();
-                    Thread.Sleep(800);
                 }
-            }) { IsBackground = true };
-            monitorThread.Start();
+            };
+            pool.OnThreadDestroyed += (msg, active) => {
+                lock(ConsoleLock) {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine($"[Событие] {msg} (Активно: {active})");
+                    Console.ResetColor();
+                }
+            };
+            pool.OnError += (msg) => {
+                lock(ConsoleLock) {
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.WriteLine($"[Событие Ошибки] {msg}");
+                    Console.ResetColor();
+                }
+            };
+
+            using var countdown = new CountdownEvent(allTestActions.Count);
+            if (allTestActions.Count == 0) return; 
 
             var sw = Stopwatch.StartNew();
 
-            Console.WriteLine("\n--- ФАЗА 1: Слабая нагрузка (5 тестов) ---");
-            for (int i = 0; i < 5; i++)
+            Console.WriteLine("\n--- ЗАПУСК ВСЕХ ТЕСТОВ ЧЕРЕЗ ПУЛ ---");
+            foreach (var task in allTestActions)
             {
-                var task = loadPlan[i];
-                pool.Enqueue(() => { task(); countdown.Signal(); });
-                Thread.Sleep(300); 
+                var capturedTask = task;
+                pool.Enqueue(() => { capturedTask(); countdown.Signal(); });
             }
 
-            Console.WriteLine("\n--- ФАЗА 2: Пиковая нагрузка (35 тестов мгновенно) ---");
-            for (int i = 5; i < 40; i++)
-            {
-                var task = loadPlan[i];
-                pool.Enqueue(() => { task(); countdown.Signal(); });
-            }
-
-            Console.WriteLine("\n--- ФАЗА 3: Имитация простоя (Ждем 4 секунды) ---");
-            Thread.Sleep(4000); 
-
-            Console.WriteLine("\n--- ФАЗА 4: Новая волна нагрузки (16 тестов) ---");
-            for (int i = 40; i < loadPlan.Count; i++)
-            {
-                var task = loadPlan[i];
-                pool.Enqueue(() => { task(); countdown.Signal(); });
-            }
-
-            // Ждем завершения всех тестов
             countdown.Wait();
             sw.Stop();
 
@@ -150,7 +161,6 @@ namespace MyTestFramework.Runner
                 }
                 else
                 {
-                    // execute task
                     testTask = Task.Run(() => testMethod.Invoke(classInstance, parameters)); 
                 }
 
@@ -190,7 +200,8 @@ namespace MyTestFramework.Runner
                     else
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"  [FAILED] {testName} -> {errorMsg}");
+                        Console.WriteLine($"  [FAILED] {testName}");
+                        Console.WriteLine($"    -> {errorMsg}");
                         _totalFailed++;
                     }
                     Console.ResetColor();
